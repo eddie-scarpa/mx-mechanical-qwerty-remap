@@ -15,11 +15,14 @@ PID := 0xC548
 ; Letters map to a single lowercase letter (case is derived live from
 ; Shift/CapsLock state). Symbol/digit keys map to [unshifted, shifted].
 ; ------------------------------------------------------------------
-letterMap := Map(
-    16,"q", 17,"w", 18,"e", 19,"r", 20,"t", 21,"y", 22,"u", 23,"i", 24,"o", 25,"p",
-    30,"a", 31,"s", 32,"d", 33,"f", 34,"g", 35,"h", 36,"j", 37,"k", 38,"l",
-    44,"z", 45,"x", 46,"c", 47,"v", 48,"b", 49,"n", 50,"m"
-)
+; Letters that need character-based text injection because a clean
+; native scan-code swap target isn't confirmed yet (M's AZERTY position
+; hasn't been verified live). Every other letter needs no entry at all -
+; J, K, L, and the rest sit in the identical physical position on both
+; layouts, so a native passthrough already produces the right character
+; AND a real keydown event (fixing app/game keyboard shortcuts like
+; YouTube's J/K/L, which don't respond to text-injected characters).
+textLetterMap := Map(50,"m")
 
 symbolMap := Map(
     2,["1","!"], 3,["2","@"], 4,["3","#"], 5,["4","$"], 6,["5","%"],
@@ -31,11 +34,11 @@ symbolMap := Map(
     51,[",","<"], 52,[".",">"], 53,["/","?"]
 )
 
-; The four positions that differ between AZERTY and QWERTY. Even when a
-; modifier is held (shortcut mode), these still need translating -
-; otherwise Ctrl+A (physically the MX's A key) fires whatever Belgian
-; AZERTY thinks that position means (Ctrl+Q), not Ctrl+A. Maps each scan
-; code to the scan code it should actually send.
+; The four letter positions that differ between AZERTY and QWERTY.
+; Applied unconditionally (typing AND shortcuts) via a genuine native
+; scan-code swap - Windows' own layout translation still produces the
+; correct character, and it's a real keydown/keyup event, so app/game
+; shortcuts bound to Q/W/A/Z work correctly too, not just plain typing.
 scanSwapMap := Map(16,30, 30,16, 17,44, 44,17)
 
 ; Numpad cluster keys share their raw scan code with the navigation
@@ -67,18 +70,19 @@ KeyEvent(code, state) {
 
     isCombo := GetKeyState("Ctrl") || GetKeyState("Alt") || GetKeyState("LWin") || GetKeyState("RWin")
 
-    if (isCombo && scanSwapMap.Has(code)) {
+    if (scanSwapMap.Has(code)) {
         ; Send the swapped scan code through Interception's own native
         ; path, for both down and up, so Windows sees a proper full
-        ; press of the correct physical key identity while whatever
-        ; modifiers are already held stay held.
+        ; press of the correct physical key identity - this now applies
+        ; always, whether you're typing or holding a modifier for a
+        ; shortcut.
         AHI.SendKeyEvent(kbId, scanSwapMap[code], state)
         return
     }
 
-    if (letterMap.Has(code) && !isCombo) {
+    if (textLetterMap.Has(code) && !isCombo) {
         if (state = 1) {
-            base := letterMap[code]
+            base := textLetterMap[code]
             useUpper := GetKeyState("Shift") != GetKeyState("CapsLock","T")
             SendText(useUpper ? StrUpper(base) : base)
         }
