@@ -24,9 +24,9 @@ PID := 0xC548
 ; YouTube's J/K/L, which don't respond to text-injected characters).
 textLetterMap := Map(50,"m")
 
+; Punctuation still handled via text injection (not native yet) - lower
+; priority since these aren't used for PIN entry or common shortcuts.
 symbolMap := Map(
-    2,["1","!"], 3,["2","@"], 4,["3","#"], 5,["4","$"], 6,["5","%"],
-    7,["6","^"], 8,["7","&"], 9,["8","*"], 10,["9","("], 11,["0",")"],
     12,["-","_"], 13,["=","+"],
     26,["[","{"], 27,["]","}"], 43,["\","|"],
     39,[";",":"], 40,["'",Chr(34)],
@@ -34,24 +34,27 @@ symbolMap := Map(
     51,[",","<"], 52,[".",">"], 53,["/","?"]
 )
 
+; Digit row: Belgian AZERTY needs Shift HELD to get a digit at all
+; (unshifted gives a symbol instead) - there's no alternate key to swap
+; to like with letters, so plain digits (no real Shift held) are sent
+; natively by momentarily holding Shift ourselves for just that keystroke.
+; Sent entirely through AHI's native path so it works everywhere,
+; including the lock screen / PIN entry (which text-injection cannot
+; reach - that's what broke PIN entry before this fix).
+;
+; Shift+digit (symbols) is a separate case: simply flipping Shift off
+; lands on Belgian AZERTY's OWN symbol set at that position, not the US
+; one - so that case still uses text injection with the correct US
+; symbol. Not needed for PIN entry, so no lock-screen requirement here.
+digitRowMap := Map(2,1,3,1,4,1,5,1,6,1,7,1,8,1,9,1,10,1,11,1)
+digitSymbolMap := Map(2,"!",3,"@",4,"#",5,"$",6,"%",7,"^",8,"&",9,"*",10,"(",11,")")
+
 ; The four letter positions that differ between AZERTY and QWERTY.
 ; Applied unconditionally (typing AND shortcuts) via a genuine native
 ; scan-code swap - Windows' own layout translation still produces the
 ; correct character, and it's a real keydown/keyup event, so app/game
 ; shortcuts bound to Q/W/A/Z work correctly too, not just plain typing.
 scanSwapMap := Map(16,30, 30,16, 17,44, 44,17)
-
-; Numpad cluster keys share their raw scan code with the navigation
-; cluster (Home/End/arrows/PgUp/PgDn) - real hardware disambiguates via
-; the NumLock toggle before the OS even sees a scan code, so a plain
-; scan-code passthrough can't reliably reproduce that. Instead we check
-; NumLock ourselves and send the correct unambiguous named key.
-numpadMap := Map(
-    71,["Numpad7","Home"], 72,["Numpad8","Up"], 73,["Numpad9","PgUp"],
-    75,["Numpad4","Left"], 76,["Numpad5","Clear"], 77,["Numpad6","Right"],
-    79,["Numpad1","End"], 80,["Numpad2","Down"], 81,["Numpad3","PgDn"],
-    82,["Numpad0","Ins"], 83,["NumpadDot","Delete"]
-)
 
 AHI := AutoHotInterception()
 kbId := AHI.GetKeyboardId(VID, PID)
@@ -97,16 +100,33 @@ KeyEvent(code, state) {
         return
     }
 
-    if numpadMap.Has(code) {
-        pair := numpadMap[code]
-        keyName := GetKeyState("NumLock","T") ? pair[1] : pair[2]
-        SendEvent("{" keyName (state = 1 ? " down" : " up") "}")
+    if (digitRowMap.Has(code) && !isCombo) {
+        realShift := GetKeyState("Shift")
+        if (realShift) {
+            ; Shift+digit = symbol. Belgian AZERTY's own unshifted
+            ; symbol set at this position isn't the US one, so this
+            ; case stays on text injection with the correct US symbol
+            ; rather than the native Shift-invert trick used below.
+            if (state = 1)
+                SendText(digitSymbolMap[code])
+            return
+        }
+        ; No real Shift held - user wants the DIGIT. Belgian AZERTY
+        ; gives the digit only when Shift is ON at this position, so
+        ; momentarily hold Shift natively just for this key, entirely
+        ; through Interception's own path (works at the lock screen).
+        if (state = 1) {
+            AHI.SendKeyEvent(kbId, 42, 1)
+            AHI.SendKeyEvent(kbId, code, 1)
+            AHI.SendKeyEvent(kbId, code, 0)
+            AHI.SendKeyEvent(kbId, 42, 0)
+        }
         return
     }
 
     ; Everything else (Shift, Ctrl, Alt, Win, CapsLock, Tab, Enter,
-    ; Backspace, Space, Esc, arrows, F-keys, Insert, Delete, etc.) gets
-    ; replayed through AHI's OWN native SendKeyEvent - injecting the
+    ; Backspace, Space, Esc, arrows, F-keys, Insert, Delete, numpad,
+    ; etc.) gets replayed through AHI's OWN native SendKeyEvent - injecting the
     ; identical scan code through the Interception driver itself, exactly
     ; as if it came from real hardware. This is deliberately NOT AHK's
     ; own Send/SendEvent stack: running AHK's hook-based Send alongside
