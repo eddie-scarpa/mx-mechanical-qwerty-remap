@@ -15,24 +15,31 @@ PID := 0xC548
 ; Letters map to a single lowercase letter (case is derived live from
 ; Shift/CapsLock state). Symbol/digit keys map to [unshifted, shifted].
 ; ------------------------------------------------------------------
-; Letters that need character-based text injection because a clean
-; native scan-code swap target isn't confirmed yet (M's AZERTY position
-; hasn't been verified live). Every other letter needs no entry at all -
-; J, K, L, and the rest sit in the identical physical position on both
-; layouts, so a native passthrough already produces the right character
-; AND a real keydown event (fixing app/game keyboard shortcuts like
-; YouTube's J/K/L, which don't respond to text-injected characters).
-textLetterMap := Map(50,"m")
+; M has no reciprocal swap partner (unlike Q/W/A/Z) - the position
+; labeled ";" on the US board is where Belgian AZERTY natively produces
+; "m"/"M" (confirmed correct via the working ; text-injection below), so
+; M just borrows that scan code one-way. ";" itself keeps its own
+; separate handling further down - this does NOT touch that.
+mNativeCode := 39
 
 ; Punctuation still handled via text injection (not native yet) - lower
 ; priority since these aren't used for PIN entry or common shortcuts.
+; ("-" and "=" removed - see punctSwapMap below, verified native instead)
 symbolMap := Map(
-    12,["-","_"], 13,["=","+"],
     26,["[","{"], 27,["]","}"], 43,["\","|"],
     39,[";",":"], 40,["'",Chr(34)],
     41,["``","~"],
     51,[",","<"], 52,[".",">"], 53,["/","?"]
 )
+
+; "-" and "=" verified live: the "=" key natively produces exactly what
+; "-" needs (base "-", shift "_"), and the "/" key natively produces
+; exactly what "=" needs (base "=", shift "+") - a clean one-way native
+; redirect, same low-risk technique as the Q/W/A/Z swap, no shift
+; trickery needed since the target's own natural behavior already
+; matches. The remaining punctuation keys had no such match when tested
+; live (likely only reachable via AltGr), so they stay on text injection.
+punctSwapMap := Map(12,13, 13,53)
 
 ; Digit row: Belgian AZERTY needs Shift HELD to get a digit at all
 ; (unshifted gives a symbol instead) - there's no alternate key to swap
@@ -83,13 +90,18 @@ KeyEvent(code, state) {
         return
     }
 
-    if (textLetterMap.Has(code) && !isCombo) {
-        if (state = 1) {
-            base := textLetterMap[code]
-            useUpper := GetKeyState("Shift") != GetKeyState("CapsLock","T")
-            SendText(useUpper ? StrUpper(base) : base)
-        }
-        return  ; swallow the "up" event too - SendText already handled the full press
+    if (punctSwapMap.Has(code)) {
+        ; "-" and "=" - same native redirect technique, verified live.
+        AHI.SendKeyEvent(kbId, punctSwapMap[code], state)
+        return
+    }
+
+    if (code = 50) {
+        ; M - send the native scan code for the AZERTY position that
+        ; produces "m"/"M", exactly like the Q/W/A/Z swap, so it works
+        ; as a genuine keydown event for shortcuts too (e.g. YouTube mute).
+        AHI.SendKeyEvent(kbId, mNativeCode, state)
+        return
     }
 
     if (symbolMap.Has(code) && !isCombo) {
