@@ -13,7 +13,7 @@ The OS default layout is set to **US QWERTY**, system-wide, permanently. The MX 
 The laptop's own built-in keyboard (genuine Belgian hardware) is the one that needs compensation, since the OS is no longer set to its native layout. An [AutoHotkey v2](https://www.autohotkey.com/) script, using the [AutoHotInterception (AHI)](https://github.com/evilC/AutoHotInterception) library on top of the [Interception](https://github.com/oblitum/Interception) driver, targets it specifically (by its device Handle, since laptop-internal keyboards typically have no real VID/PID) and:
 
 - Reads its raw scan codes directly, before Windows applies any layout translation
-- Sends back the correct Belgian character for each key, regardless of the US OS layout — covering letters, digits, punctuation, the AltGr layer, and dead-key composition (´, `, ^, ~ combining with vowels into accented characters)
+- Sends back the correct Belgian character for each key, regardless of the US OS layout — covering letters, digits, punctuation, the AltGr layer, and dead-key composition (´, `, ^, ~, ¨ combining with vowels into accented characters)
 - Leaves every other keyboard (the MX Mechanical included) completely untouched
 
 ### Known limitation
@@ -59,8 +59,12 @@ Run `Monitor.ahk`. Laptop-internal keyboards typically show as VID/PID `0x0000, 
 Copy `MX_QWERTY_Remap.ahk` from this repo to `C:\Program Files\AHI\`. Update the Handle value and the `#include` path at the top if anything moved.
 
 ### 7. Task Scheduler
-- Create Task → General: check **"Run with highest privileges"**
-- Triggers: **At log on**
+- Create Task → General:
+  - Check **"Run with highest privileges"** (needed — Interception won't attach without admin rights)
+  - Security options: **"Run only when user is logged on"**
+- Triggers → New → Begin the task: **At log on**, **Any user**
+  - Advanced settings: check **"Delay task for:"** → **30 seconds**. Without this, the task can start before Explorer's tray/notification area is ready, which doesn't affect the remap itself but can cause the tray icon to silently fail to register for that session.
+- Settings tab: uncheck **"Stop the task if it runs longer than: 3 days"** — this is checked by default on new tasks and will silently kill the script after 3 days of continuous uptime (e.g. sleep/wake without a full reboot), even while still logged in.
 - Actions → Start a program:
   - Program: `C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe`
   - Arguments: `"C:\Program Files\AHI\MX_QWERTY_Remap.ahk"`
