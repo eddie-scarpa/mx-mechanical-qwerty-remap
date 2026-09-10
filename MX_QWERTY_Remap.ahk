@@ -109,9 +109,9 @@ altGrInfo := Map(
 
 raltDown := false
 
-; Dead keys: on real BE hardware, ^ (unshifted, no AltGr) and ´/`/~
-; (all AltGr) don't output a character on their own - pressing one
-; arms a pending accent that only resolves once the NEXT key is
+; Dead keys: on real BE hardware, ^/¨ (unshifted/shifted, no AltGr) and
+; ´/`/~ (all AltGr) don't output a character on their own - pressing
+; one arms a pending accent that only resolves once the NEXT key is
 ; pressed: a composable vowel/n produces the accented letter, space
 ; is absorbed into the bare accent mark, and anything else outputs
 ; the bare accent mark followed by that key's own normal output.
@@ -123,7 +123,8 @@ deadKeyCompose := Map(
     "^", Map(18,"ê", 16,"â", 24,"ô", 23,"î", 22,"û"),
     "´", Map(18,"é", 16,"á", 24,"ó", 23,"í", 22,"ú"),
     "``", Map(18,"è", 16,"à", 24,"ò", 23,"ì", 22,"ù"),
-    "~", Map(16,"ã", 24,"õ", 49,"ñ")
+    "~", Map(16,"ã", 24,"õ", 49,"ñ"),
+    "¨", Map(18,"ë", 16,"ä", 24,"ö", 23,"ï", 21,"ÿ")
 )
 
 AHI.SubscribeKeyboard(tpId, true, RemapEvent)
@@ -275,11 +276,11 @@ RemapEvent(code, state) {
     if (punctInfo.Has(code)) {
         if (state = 1) {
             realShift := GetKeyState("Shift")
-            if (code = 26 && !realShift) {
-                ; ^ (unshifted, no AltGr) is a dead key - arm, don't
-                ; send yet. Shifted (¨) is unaffected, still sent
-                ; immediately below as before.
-                pendingDeadKey := deadKeySymbol[26]
+            if (code = 26) {
+                ; ^ (unshifted) and ¨ (shifted) are both dead keys -
+                ; arm, don't send yet. Resolved against the next
+                ; keypress at the top of this function.
+                pendingDeadKey := realShift ? "¨" : deadKeySymbol[26]
                 suppressReleaseCode := code
                 return
             }
