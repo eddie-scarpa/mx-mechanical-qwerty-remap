@@ -29,7 +29,7 @@ Remapping a physical key changes what scan code it reports — so a key can't si
 | This script | `C:\Program Files\AHI\MX_QWERTY_Remap.ahk` |
 | AutoHotkey v2 | `C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe` |
 
-Runs automatically at login via a Task Scheduler task, set to run with highest privileges (needed — Interception won't attach without admin rights).
+Runs automatically at login via a Task Scheduler task, set to run with highest privileges (needed — Interception won't attach without admin rights). Also restarts itself daily, since Interception's capture of the built-in keyboard can silently wedge after long periods of uptime.
 
 ## Rebuilding this from scratch
 
@@ -64,7 +64,10 @@ Copy `MX_QWERTY_Remap.ahk` from this repo to `C:\Program Files\AHI\`. Update the
   - Security options: **"Run only when user is logged on"**
 - Triggers → New → Begin the task: **At log on**, **Any user**
   - Advanced settings: check **"Delay task for:"** → **30 seconds**. Without this, the task can start before Explorer's tray/notification area is ready, which doesn't affect the remap itself but can cause the tray icon to silently fail to register for that session.
-- Settings tab: uncheck **"Stop the task if it runs longer than: 3 days"** — this is checked by default on new tasks and will silently kill the script after 3 days of continuous uptime (e.g. sleep/wake without a full reboot), even while still logged in.
+- Triggers → New → Begin the task: **On a schedule** → **Daily**, at a low-traffic time (e.g. 5:00 AM), recur every 1 day. This works around a known Interception-driver issue where its capture of the built-in keyboard can silently wedge (no input at all, MX unaffected) after long periods of uptime — a scheduled restart keeps uptime well under that threshold. It's a mitigation, not a root-cause fix.
+- Settings tab:
+  - Uncheck **"Stop the task if it runs longer than: 3 days"** — this is checked by default on new tasks and will silently kill the script after 3 days of continuous uptime (e.g. sleep/wake without a full reboot), even while still logged in.
+  - Set **"If the task is already running, then the following rule applies"** to **"Stop the existing instance"** — needed so the daily trigger above actually restarts the script instead of being ignored because one's already running.
 - Actions → Start a program:
   - Program: `C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe`
   - Arguments: `"C:\Program Files\AHI\MX_QWERTY_Remap.ahk"`
