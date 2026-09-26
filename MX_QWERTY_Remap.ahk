@@ -1,33 +1,20 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent
-; STRUCTURAL REWRITE: OS default layout is US QWERTY (system-wide).
-; The MX Mechanical is genuine US ANSI hardware, so it needs ZERO
-; remapping - it matches the OS natively.
+; STRUCTURAL REWRITE: OS default layout is US QWERTY (system-wide,
+; permanent). The MX Mechanical is genuine US ANSI hardware, so it
+; needs ZERO remapping - it matches the OS natively.
 ;
 ; This script remaps the LAPTOP's own built-in Belgian AZERTY keyboard,
 ; so IT keeps producing correct Belgian characters despite the OS no
-; longer being set to Belgian. Every character below was verified
-; against real typed output.
+; longer being set to Belgian. Covers letters, digits, punctuation, the
+; full AltGr layer, and dead-key composition (^, ´, `, ~, ¨ combining
+; with vowels into accented characters). Every value was verified
+; against real typed output, not assumed from documentation.
 ;
-; THIS VERSION ADDS: AltGr layer (11 of 12 keys fully native, 1 text-
-; injection fallback for the accent-acute symbol) and the ISO key near
-; Left Shift (code 86, "<>\" on BE hardware) - both previously unbuilt
-; gaps. Shift+AltGr is confirmed (live-tested) to produce nothing on
-; real BE hardware for every AltGr key, so that combo is suppressed.
-;
-; STILL A STANDALONE TEST SCRIPT - not yet the Task-Scheduler-launched
-; file, not yet pushed to GitHub. Test under a temporarily-switched US
-; OS layout before considering permanent deployment.
-;
-; UNVERIFIED ASSUMPTION TO WATCH FOR: while RAlt is physically held
-; down, it is passed through to the OS unmodified (not remapped), and
-; the AltGr branch below then ALSO sends a synthetic native key/Shift
-; combo on top of that real RAlt-down state. On a plain US layout this
-; should be harmless (US has no AltGr-layer definition), but this
-; specific interaction has NOT been live-tested yet like everything
-; else in this project has been - verify actual Notepad output for
-; every AltGr key before trusting it, same discipline as always.
+; Deployed permanently via Task Scheduler (see repo README for setup,
+; including a daily restart that works around a long-uptime Interception
+; driver issue - see README for details).
 ;
 ; Must be run as Administrator - the Interception driver will not
 ; attach otherwise.
@@ -64,15 +51,16 @@ digitInfo := Map(
 )
 
 ; Remaining punctuation - every value verified against real typed
-; output on the ThinkPad. Some Belgian characters (°, ¨, µ, £, ², ³)
+; output on the ThinkPad. Some Belgian characters (°, µ, £, ², ³)
 ; don't exist on a US keyboard via any Shift combo - those fall back
 ; to text injection; everything else is fully native.
 ; Code 86 (the ISO key near Left Shift, "<>\" on BE hardware) added in
 ; this version - previously unbuilt.
+; Code 26 (^/¨) is not in this map - both are dead keys, handled
+; entirely by the code=26 check further down in RemapEvent instead.
 punctInfo := Map(
     12,{base:{text:")",code:11,shift:true},  shft:{text:"°",code:0, shift:false}},
     13,{base:{text:"-",code:12,shift:false}, shft:{text:"_",code:12,shift:true}},
-    26,{base:{text:"^",code:7, shift:true},  shft:{text:"¨",code:0, shift:false}},
     27,{base:{text:"$",code:5, shift:true},  shft:{text:"*",code:9, shift:true}},
     43,{base:{text:"µ",code:0, shift:false}, shft:{text:"£",code:0, shift:false}},
     40,{base:{text:"ù",code:0, shift:false}, shft:{text:"%",code:6, shift:true}},
@@ -248,6 +236,17 @@ RemapEvent(code, state) {
         return
     }
 
+    ; ^ (unshifted) and ¨ (shifted) are both dead keys - this only
+    ; fires when AltGr isn't held, since altGrInfo above already
+    ; handles code 26 under AltGr (producing "[", not a dead key
+    ; there). Arm, don't send yet - resolved against the next
+    ; keypress at the top of this function.
+    if (code = 26) {
+        pendingDeadKey := GetKeyState("Shift") ? "¨" : deadKeySymbol[26]
+        suppressReleaseCode := code
+        return
+    }
+
     if (digitInfo.Has(code)) {
         if (state = 1) {
             realShift := GetKeyState("Shift")
@@ -276,14 +275,6 @@ RemapEvent(code, state) {
     if (punctInfo.Has(code)) {
         if (state = 1) {
             realShift := GetKeyState("Shift")
-            if (code = 26) {
-                ; ^ (unshifted) and ¨ (shifted) are both dead keys -
-                ; arm, don't send yet. Resolved against the next
-                ; keypress at the top of this function.
-                pendingDeadKey := realShift ? "¨" : deadKeySymbol[26]
-                suppressReleaseCode := code
-                return
-            }
             entry := punctInfo[code]
             chosen := realShift ? entry.shft : entry.base
             if (chosen.code = 0) {
