@@ -115,12 +115,28 @@ deadKeyCompose := Map(
     "¨", Map(18,"ë", 16,"ä", 24,"ö", 23,"ï", 21,"ÿ")
 )
 
+; Physical Shift state, tracked per side (Left = 42, Right = 310) from
+; the key events received here. Needed because suppressing Shift for a
+; native key must release the side that is actually held - releasing
+; only Left Shift left Right Shift down underneath, so e.g. Right Shift
+; + the ; and : keys came out as > and ? instead of . and /.
+lshiftDown := false
+rshiftDown := false
+
 AHI.SubscribeKeyboard(tpId, true, RemapEvent)
 return
 
 RemapEvent(code, state) {
     global AHI, tpId, scanSwapMap, digitInfo, punctInfo, altGrInfo, raltDown
     global pendingDeadKey, suppressReleaseCode, deadKeySymbol, deadKeyCompose
+    global lshiftDown, rshiftDown
+
+    ; Track physical Shift per side. No return - the Shift event itself
+    ; still continues on to normal passthrough below.
+    if (code = 42)
+        lshiftDown := (state = 1)
+    else if (code = 310)
+        rshiftDown := (state = 1)
 
     ; Swallow the release of any key whose press was suppressed above
     ; (an armed dead key, or a composed/absorbed output sent via
@@ -206,7 +222,7 @@ RemapEvent(code, state) {
     ; from their plain/Shift output).
     if (altGrInfo.Has(code) && raltDown) {
         if (state = 1) {
-            if (GetKeyState("Shift")) {
+            if (lshiftDown || rshiftDown) {
                 ; Live-tested on real BE hardware: Shift+AltGr produces
                 ; no character for any of these keys - suppress.
                 return
@@ -242,19 +258,19 @@ RemapEvent(code, state) {
     ; there). Arm, don't send yet - resolved against the next
     ; keypress at the top of this function.
     if (code = 26) {
-        pendingDeadKey := GetKeyState("Shift") ? "¨" : deadKeySymbol[26]
+        pendingDeadKey := (lshiftDown || rshiftDown) ? "¨" : deadKeySymbol[26]
         suppressReleaseCode := code
         return
     }
 
     if (digitInfo.Has(code)) {
         if (state = 1) {
-            realShift := GetKeyState("Shift")
+            realShift := (lshiftDown || rshiftDown)
             if (realShift) {
-                AHI.SendKeyEvent(tpId, 42, 0)
+                ReleaseShifts()
                 AHI.SendKeyEvent(tpId, code, 1)
                 AHI.SendKeyEvent(tpId, code, 0)
-                AHI.SendKeyEvent(tpId, 42, 1)
+                RestoreShifts()
             } else {
                 info := digitInfo[code]
                 if (info.nativeCode = 0) {
@@ -274,19 +290,23 @@ RemapEvent(code, state) {
 
     if (punctInfo.Has(code)) {
         if (state = 1) {
-            realShift := GetKeyState("Shift")
+            realShift := (lshiftDown || rshiftDown)
             entry := punctInfo[code]
             chosen := realShift ? entry.shft : entry.base
             if (chosen.code = 0) {
                 SendText(chosen.text)
             } else {
                 needShift := chosen.shift
-                if (needShift != realShift)
-                    AHI.SendKeyEvent(tpId, 42, needShift ? 1 : 0)
+                if (realShift && !needShift)
+                    ReleaseShifts()
+                else if (!realShift && needShift)
+                    AHI.SendKeyEvent(tpId, 42, 1)
                 AHI.SendKeyEvent(tpId, chosen.code, 1)
                 AHI.SendKeyEvent(tpId, chosen.code, 0)
-                if (needShift != realShift)
-                    AHI.SendKeyEvent(tpId, 42, realShift ? 1 : 0)
+                if (realShift && !needShift)
+                    RestoreShifts()
+                else if (!realShift && needShift)
+                    AHI.SendKeyEvent(tpId, 42, 0)
             }
         }
         return
@@ -297,4 +317,24 @@ RemapEvent(code, state) {
     ; etc.) is not layout-dependent - replay the identical physical
     ; key event.
     AHI.SendKeyEvent(tpId, code, state)
+}
+
+; Release whichever physical Shift key(s) are currently held, so a native
+; key can be sent without Shift applied. Always paired with RestoreShifts.
+ReleaseShifts() {
+    global AHI, tpId, lshiftDown, rshiftDown
+    if (lshiftDown)
+        AHI.SendKeyEvent(tpId, 42, 0)
+    if (rshiftDown)
+        AHI.SendKeyEvent(tpId, 310, 0)
+}
+
+; Put back exactly the Shift key(s) that are physically still held - never
+; one that isn't, which would leave a phantom Shift pressed.
+RestoreShifts() {
+    global AHI, tpId, lshiftDown, rshiftDown
+    if (lshiftDown)
+        AHI.SendKeyEvent(tpId, 42, 1)
+    if (rshiftDown)
+        AHI.SendKeyEvent(tpId, 310, 1)
 }
