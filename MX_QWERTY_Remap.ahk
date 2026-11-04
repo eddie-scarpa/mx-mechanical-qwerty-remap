@@ -114,6 +114,17 @@ deadKeyCompose := Map(
     "~", Map(16,"ã", 24,"õ", 49,"ñ"),
     "¨", Map(18,"ë", 16,"ä", 24,"ö", 23,"ï", 21,"ÿ")
 )
+; Capital forms of the same compositions, same keys and codes, used when
+; Shift is held (or CapsLock is on) for the key that completes the accent.
+; Unlike the lowercase table these are the capital counterparts of the
+; tested values, not separately live-tested ones.
+deadKeyComposeUpper := Map(
+    "^", Map(18,"Ê", 16,"Â", 24,"Ô", 23,"Î", 22,"Û"),
+    "´", Map(18,"É", 16,"Á", 24,"Ó", 23,"Í", 22,"Ú"),
+    "``", Map(18,"È", 16,"À", 24,"Ò", 23,"Ì", 22,"Ù"),
+    "~", Map(16,"Ã", 24,"Õ", 49,"Ñ"),
+    "¨", Map(18,"Ë", 16,"Ä", 24,"Ö", 23,"Ï", 21,"Ÿ")
+)
 
 ; Physical Shift state, tracked per side (Left = 42, Right = 310) from
 ; the key events received here. Needed because suppressing Shift for a
@@ -129,7 +140,7 @@ return
 RemapEvent(code, state) {
     global AHI, tpId, scanSwapMap, digitInfo, punctInfo, altGrInfo, raltDown
     global pendingDeadKey, suppressReleaseCode, deadKeySymbol, deadKeyCompose
-    global lshiftDown, rshiftDown
+    global deadKeyComposeUpper, lshiftDown, rshiftDown
 
     ; Track physical Shift per side. No return - the Shift event itself
     ; still continues on to normal passthrough below.
@@ -153,7 +164,9 @@ RemapEvent(code, state) {
     ; composable vowel/n produces the accented letter. Anything else
     ; outputs the bare accent mark and then falls through to let this
     ; same key's own normal handling run too (e.g. ^ then b → "^b").
-    if (pendingDeadKey != "" && state = 1) {
+    ; Pressing a Shift key itself does NOT resolve it - the accent stays
+    ; pending so Shift + vowel can compose a capital (Ê, É, Ë ...).
+    if (pendingDeadKey != "" && state = 1 && code != 42 && code != 310) {
         pdk := pendingDeadKey
         pendingDeadKey := ""
         if (code = 57) {
@@ -162,7 +175,14 @@ RemapEvent(code, state) {
             return
         }
         if (deadKeyCompose[pdk].Has(code)) {
-            TypeText(deadKeyCompose[pdk][code])
+            ; Capital when exactly one of Shift / CapsLock applies
+            ; (both together cancel out, as for ordinary letters).
+            shiftOn := (lshiftDown || rshiftDown) ? 1 : 0
+            capsOn := GetKeyState("CapsLock", "T") ? 1 : 0
+            if (shiftOn != capsOn)
+                TypeText(deadKeyComposeUpper[pdk][code])
+            else
+                TypeText(deadKeyCompose[pdk][code])
             suppressReleaseCode := code
             return
         }
