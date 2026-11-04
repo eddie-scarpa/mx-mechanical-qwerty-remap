@@ -157,16 +157,16 @@ RemapEvent(code, state) {
         pdk := pendingDeadKey
         pendingDeadKey := ""
         if (code = 57) {
-            SendText(pdk)
+            TypeText(pdk)
             suppressReleaseCode := code
             return
         }
         if (deadKeyCompose[pdk].Has(code)) {
-            SendText(deadKeyCompose[pdk][code])
+            TypeText(deadKeyCompose[pdk][code])
             suppressReleaseCode := code
             return
         }
-        SendText(pdk)
+        TypeText(pdk)
         ; no return - this key's own press still gets handled below
     }
 
@@ -239,7 +239,7 @@ RemapEvent(code, state) {
             }
             info := altGrInfo[code]
             if (info.nativeCode = 0) {
-                SendText(info.text)
+                TypeText(info.text)
             } else {
                 if (info.nativeShift)
                     AHI.SendKeyEvent(tpId, 42, 1)
@@ -274,7 +274,7 @@ RemapEvent(code, state) {
             } else {
                 info := digitInfo[code]
                 if (info.nativeCode = 0) {
-                    SendText(info.text)
+                    TypeText(info.text)
                 } else {
                     if (info.nativeShift)
                         AHI.SendKeyEvent(tpId, 42, 1)
@@ -294,7 +294,7 @@ RemapEvent(code, state) {
             entry := punctInfo[code]
             chosen := realShift ? entry.shft : entry.base
             if (chosen.code = 0) {
-                SendText(chosen.text)
+                TypeText(chosen.text)
             } else {
                 needShift := chosen.shift
                 if (realShift && !needShift)
@@ -337,4 +337,16 @@ RestoreShifts() {
         AHI.SendKeyEvent(tpId, 42, 1)
     if (rshiftDown)
         AHI.SendKeyEvent(tpId, 310, 1)
+}
+
+; Type literal text without disturbing a held Shift. AutoHotkey's SendText
+; lifts any modifier that is down before typing and does not reliably put
+; it back, so a Shift still held after a text-injected character (e.g. the
+; ¨ from a dead key, or °/£/³) was silently lost for the next key. Shift is
+; taken off and put back here through AHI instead. With no Shift held,
+; ReleaseShifts/RestoreShifts do nothing.
+TypeText(text) {
+    ReleaseShifts()
+    SendText(text)
+    RestoreShifts()
 }
